@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Practical Wisdom Deliberation Tool</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;--card:#ffffff;--ink:#1f2937;--muted:#4b5563;--line:#e5e7eb;
+      --brand:#355c7d;--brand-2:#6c5b7b;--ok:#0f766e;--warn:#b45309;--danger:#b91c1c;
+      --radius:14px;--shadow:0 10px 28px rgba(17,24,39,.08);
+    }
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:linear-gradient(180deg,#f8fafc,#f3f4f6);color:var(--ink)}
+    .app{max-width:1100px;margin:24px auto;padding:16px}
+    .top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+    h1{margin:.2rem 0;font-size:1.45rem} .sub{color:var(--muted);max-width:75ch}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:.8rem}
+    .bar{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:10px}.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2));width:0}
+    .nav{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+    button{border:1px solid transparent;background:var(--brand);color:white;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+    button.secondary{background:white;color:var(--ink);border-color:var(--line)} button.ghost{background:transparent;color:var(--brand);border:1px dashed #cbd5e1}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .card{background:var(--card);border:1px solid #edf2f7;border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin:12px 0}
+    .grid{display:grid;gap:12px}.grid.two{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+    label{font-size:.9rem;font-weight:600} input,textarea,select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px;margin-top:6px;font:inherit}
+    textarea{min-height:90px;resize:vertical}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}.chip{padding:8px 12px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;cursor:pointer}.chip.active{background:#eef2ff;border-color:#818cf8;color:#3730a3}
+    .muted{color:var(--muted);font-size:.93rem}
+    .stage-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .repeat{border:1px solid #e2e8f0;padding:12px;border-radius:12px;margin:10px 0;background:#fcfcfd}
+    .metric{font-size:.86rem;color:#374151;background:#f8fafc;padding:8px;border-radius:10px}
+    .score{font-weight:700}
+    .report{background:#fff;border:1px solid #dbeafe}
+    .warn{color:var(--warn)} .danger{color:var(--danger)} .ok{color:var(--ok)}
+    .hidden{display:none}
+    @media print{ .nav,.top .pill,#resetBtn,#copyBtn,#printBtn,#downloadBtn{display:none!important} body{background:white}.card{box-shadow:none;border-color:#ddd} }
+  </style>
+</head>
+<body>
+  <!-- Subscriber-only access should be enforced by Ghost Membership / server-side rules.
+       Do not rely on client JS for real access control. -->
+  <main class="app" id="app">
+    <section class="top">
+      <div>
+        <span class="pill">Reflective educational tool</span>
+        <h1>Practical Wisdom Deliberation Tool</h1>
+        <p class="sub">A guided, Aristotelian deliberation process that supports judgement under real constraints. It does not make decisions for you.</p>
+        <div class="bar" aria-label="Progress"><span id="progressFill"></span></div>
+      </div>
+      <div class="card" style="max-width:350px">
+        <strong>Note</strong>
+        <p class="muted">This is a reflective educational tool, not medical, legal, financial, or therapeutic advice. For safeguarding, legal, clinical, or emergency concerns, seek appropriate professional help.</p>
+      </div>
+    </section>
+
+    <section id="stageContainer"></section>
+
+    <nav class="nav">
+      <button class="secondary" id="prevBtn">Back</button>
+      <button id="nextBtn">Next</button>
+      <button class="ghost" id="resetBtn">Reset deliberation</button>
+    </nav>
+  </main>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'pwc_deliberation_v1';
+  const stages = [
+    'Situation','People & Roles','Moral Identity','Virtues','Actions','Vice/Virtue Calibration',
+    'Missing Information','CIVIC','Compare Actions','Provisional Judgement','Reflection','Final Report'
+  ];
+  const typeOptions = ['decision','conflict','goal','relationship issue','professional dilemma','personal pattern'];
+  const virtues = [
+    {name:'Courage',desc:'Facing difficulty or risk for the sake of what is worthwhile.'},
+    {name:'Honesty',desc:'Being truthful without becoming needlessly cruel.'},
+    {name:'Compassion',desc:'Responding to suffering with humane concern.'},
+    {name:'Justice',desc:'Giving people their due.'},
+    {name:'Temperance',desc:'Regulating appetite, impulse, and intensity.'},
+    {name:'Prudence / practical wisdom',desc:'Judging well about what matters in context.'},
+    {name:'Humility',desc:'Seeing oneself accurately without vanity or self-erasure.'},
+    {name:'Loyalty',desc:'Remaining rightly committed to people or institutions.'},
+    {name:'Generosity',desc:'Giving appropriately without self-erasure.'},
+    {name:'Responsibility',desc:'Owning obligations without becoming crushed by them.'},
+    {name:'Patience',desc:'Allowing time where time is needed.'},
+    {name:'Assertiveness',desc:'Stating needs and boundaries without aggression.'},
+    {name:'Gratitude',desc:'Recognising goods received without servility.'},
+    {name:'Forgiveness',desc:'Releasing resentment where appropriate without excusing harm.'},
+    {name:'Perseverance',desc:'Continuing worthwhile effort without stubborn futility.'},
+    {name:'Hope',desc:'Remaining open to good possibilities without fantasy.'},
+    {name:'Wisdom',desc:'Integrating truth, goodness, timing, and context.'}
+  ];
+  // Editable mapping table.
+  const viceMap = {
+    Courage:['cowardice/avoidance','courage proportionate to context','recklessness/heroic posturing'],
+    Honesty:['evasion/deception','truthful speech fitted to person and timing','cruel bluntness/self-indulgent candour'],
+    Compassion:['coldness/indifference','humane concern with proportion','enabling/sentimental avoidance'],
+    Justice:['unfairness/favouritism','giving due in context','punitive rigidity/mercilessness'],
+    Temperance:['dysregulation','proportionate regulation','repression/joyless denial'],
+    Humility:['arrogance/vanity','accurate self-appraisal','self-erasure/false modesty'],
+    Generosity:['stinginess','appropriate giving','imprudent self-sacrifice'],
+    Responsibility:['negligence/blame-shifting','owning proper obligations','martyrdom/control'],
+    Assertiveness:['passivity','clear proportionate advocacy','aggression/domination'],
+    Perseverance:['giving up too soon','sustained worthwhile effort','stubborn sunk-cost rigidity']
+  };
+
+  const civicScale = ['Strongly undermines','Somewhat undermines','Mixed / unclear','Somewhat supports','Strongly supports'];
+  let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || {
+    stage:0,
+    situation:{}, people:[{label:'Me',role:'',needs:'',expectations:'',constraints:'',power:''}], identity:{},
+    virtues:{selected:[],notes:{},tensions:''}, actions:[{name:'',desc:'',affected:'',good:'',harm:'',assumptions:''},{name:'',desc:'',affected:'',good:'',harm:'',assumptions:''}],
+    calibration:{}, missing:{}, civic:{}, judgement:{}, reflection:{}
+  };
+
+  const $ = (s) => document.querySelector(s);
+  const stageContainer = $('#stageContainer');
+
+  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function pct(){ return Math.round((state.stage)/(stages.length-1)*100); }
+
+  function chips(name, options, value){
+    return `<div class="chips">${options.map(o=>`<button type="button" class="chip ${value===o?'active':''}" data-name="${name}" data-val="${o}">${o}</button>`).join('')}</div>`;
+  }
+
+  function render(){
+    $('#progressFill').style.width = pct()+'%';
+    const title = `<div class="stage-title"><h2>${state.stage+1}. ${stages[state.stage]}</h2><span class="muted">${pct()}% complete</span></div>`;
+    stageContainer.innerHTML = `<article class="card">${title}${renderStage()}</article>`;
+    $('#prevBtn').disabled = state.stage===0;
+    $('#nextBtn').textContent = state.stage===stages.length-1 ? 'Done' : 'Next';
+    bind(); save();
+  }
+
+  function renderStage(){
+    switch(state.stage){
+      case 0: return `
+      <p class="muted">What situation, problem, aim, or decision are you trying to think through?</p>
+      <div class="grid two">
+      <label>Title<input id="title" value="${state.situation.title||''}" /></label>
+      <label>Type${chips('stype',typeOptions,state.situation.type)}</label>
+      <label>Urgency${chips('urgency',['low','moderate','high'],state.situation.urgency)}</label>
+      <label>Emotional intensity${chips('emotion',['low','moderate','high'],state.situation.emotion)}</label>
+      <label>Stakes${chips('stakes',['low','moderate','high'],state.situation.stakes)}</label>
+      </div><label>Brief description<textarea id="description">${state.situation.description||''}</textarea></label>`;
+      case 1: return stageRepeat('people','Who is involved, and what roles do they occupy?', ['label','role','needs','expectations','constraints','power']);
+      case 2: return `<p class="muted">When you look back on this, what kind of person do you want to have been?</p>
+      <label>I want to be someone who...<textarea id="iWant">${state.identity.iWant||''}</textarea></label>
+      <label>I do not want to become someone who...<textarea id="iAvoid">${state.identity.iAvoid||''}</textarea></label>
+      <label>Relevant identity${chips('identity',['honest person','courageous person','kind person','fair person','wise person','responsible person','loyal person','disciplined person','generous person','humble person','other'],state.identity.tag)}</label>`;
+      case 3: return `<p class="muted">Select virtues at stake. Add why each matters.</p>${virtues.map(v=>`<div class="repeat"><label><input type="checkbox" data-virtue="${v.name}" ${state.virtues.selected.includes(v.name)?'checked':''}/> <strong>${v.name}</strong> — ${v.desc}</label>${state.virtues.selected.includes(v.name)?`<textarea data-vnote="${v.name}" placeholder="Why might this virtue matter here?">${state.virtues.notes[v.name]||''}</textarea>`:''}</div>`).join('')}
+      <label>Virtues in tension<textarea id="tensions" placeholder="e.g., honesty vs kindness">${state.virtues.tensions||''}</textarea></label>`;
+      case 4: return stageRepeat('actions','Add 2 to 6 possible courses of action.', ['name','desc','affected','good','harm','assumptions'],2,6);
+      case 5: return renderCalibration();
+      case 6: return `<p class="muted">Uncertainty is part of wisdom. Name what you do not yet know.</p>
+      ${['facts','perspectives','assumption','changeMind','consult','timing','nextStep'].map(k=>`<label>${k}<textarea id="m_${k}">${state.missing[k]||''}</textarea></label>`).join('')}`;
+      case 7: return renderCivic();
+      case 8: return renderCompare();
+      case 9: return `<label>My provisional judgement is...<textarea id="j1">${state.judgement.j1||''}</textarea></label>
+      <label>Action I am leaning toward...<input id="j2" value="${state.judgement.j2||''}"/></label>
+      <label>Main virtue to express<textarea id="j3">${state.judgement.j3||''}</textarea></label>
+      <label>Main vice to avoid<textarea id="j4">${state.judgement.j4||''}</textarea></label>
+      <label>Information still needed<textarea id="j5">${state.judgement.j5||''}</textarea></label>
+      <label>First concrete step<textarea id="j6">${state.judgement.j6||''}</textarea></label>
+      <label>Review date<input id="j7" type="date" value="${state.judgement.j7||''}"/></label>`;
+      case 10: return `${['did','happened','aligned','myFlourishing','othersFlourishing','lean','different','taught'].map(k=>`<label>${k}<textarea id="r_${k}">${state.reflection[k]||''}</textarea></label>`).join('')}`;
+      default: return renderReport();
+    }
+  }
+
+  function stageRepeat(key, intro, fields, min=1,max=8){
+    const arr = state[key];
+    return `<p class="muted">${intro}</p>${arr.map((item,i)=>`<div class="repeat">${fields.map(f=>`<label>${f}<textarea data-repeat="${key}" data-idx="${i}" data-field="${f}">${item[f]||''}</textarea></label>`).join('')}${arr.length>min?`<button type="button" class="secondary" data-remove="${key}:${i}">Remove</button>`:''}</div>`).join('')}${arr.length<max?`<button type="button" class="ghost" data-add="${key}">Add another</button>`:''}`;
+  }
+
+  function renderCalibration(){
+    if(!state.virtues.selected.length) return '<p class="warn">Select at least one virtue in Stage 4 first.</p>';
+    return state.actions.map((a,ai)=>`<div class="repeat"><h3>Action ${ai+1}: ${a.name||'Untitled action'}</h3>
+      ${state.virtues.selected.map(v=>{
+        const row=((state.calibration[ai]||{})[v])||{d:3,m:3,e:3};
+        const map = viceMap[v]||['deficiency','mean','excess'];
+        return `<div class="metric"><strong>${v}</strong><br><span class="muted">Deficiency: ${map[0]} | Mean: ${map[1]} | Excess: ${map[2]}</span>
+        ${slider(ai,v,'d','Risk of deficiency',row.d)}${slider(ai,v,'m','Likelihood of mean',row.m)}${slider(ai,v,'e','Risk of excess',row.e)}</div>`;
+      }).join('')}
+    </div>`).join('');
+  }
+  function slider(ai,v,t,label,val){ return `<label>${label} <input type="range" min="1" max="5" step="1" value="${val}" data-cal="${ai}|${v}|${t}"/><span class="score">${val}</span></label>`; }
+
+  function renderCivic(){
+    const qs = {
+      c:'Does this fit realistic capacities and limits responsibly?',
+      i:'Does this help you live your roles and aims well?',
+      s:'Does this support or avoid undermining others\' flourishing?'
+    };
+    return state.actions.map((a,ai)=>{ const c = state.civic[ai]||{c:3,i:3,s:3,notes:''};
+      return `<div class="repeat"><h3>${a.name||'Untitled action'}</h3>
+      ${Object.entries(qs).map(([k,q])=>`<label>${q}<select data-civic="${ai}|${k}">${civicScale.map((t,idx)=>`<option value="${idx+1}" ${c[k]==idx+1?'selected':''}>${t}</option>`).join('')}</select></label>`).join('')}
+      <label>Context notes<textarea data-civicnote="${ai}">${c.notes||''}</textarea></label></div>`;
+    }).join('');
+  }
+
+  function scores(ai){
+    const cal = state.calibration[ai]||{}; const vals=Object.values(cal); const avg=(k)=>vals.length?vals.reduce((s,v)=>s+(+v[k]||3),0)/vals.length:3;
+    const mean=avg('m'), def=avg('d'), ex=avg('e'); const c=state.civic[ai]||{c:3,i:3,s:3}; const civic=((+c.c)+(+c.i)+(+c.s))/3;
+    const missingRisk = (state.missing.facts||state.missing.assumption||state.missing.perspectives)?3:1;
+    let pws = ((mean/5)*40)+((1-(def-1)/4)*20)+((1-(ex-1)/4)*20)+((civic/5)*20)-((missingRisk-1)*3);
+    pws=Math.max(0,Math.min(100,Math.round(pws)));
+    const flags=[]; if(c.s<=2) flags.push('Potentially misaligned with others’ flourishing'); if(c.c<=2) flags.push('Potentially misaligned with realistic constraints'); if(def>=4||ex>=4) flags.push('High vice risk'); if(missingRisk>=3) flags.push('Requires more information');
+    return {mean,def,ex,civic,c, pws, flags};
+  }
+  function band(p){return p>=80?'Strongly aligned, but still review context.':p>=65?'Promising, with cautions.':p>=50?'Mixed; requires more thought.':p>=35?'Significant risk of misalignment.':'Weakly aligned; reconsider carefully.'}
+
+  function renderCompare(){
+    return `<p class="muted">These scores are deliberation aids, not objective truth.</p>` + state.actions.map((a,ai)=>{const s=scores(ai);
+      return `<div class="repeat"><h3>${a.name||'Untitled action'}</h3>
+      <div class="grid two"><div class="metric">Virtue likelihood: ${s.mean.toFixed(2)}</div><div class="metric">Deficiency risk: ${s.def.toFixed(2)}</div><div class="metric">Excess risk: ${s.ex.toFixed(2)}</div><div class="metric">CIVIC alignment: ${s.civic.toFixed(2)}</div><div class="metric"><strong>Practical wisdom rating: ${s.pws}/100</strong><br>${band(s.pws)}</div></div>
+      <ul>${s.flags.map(f=>`<li class="warn">${f}</li>`).join('')||'<li class="ok">No major warning flags detected.</li>'}</ul></div>`;
+    }).join('');
+  }
+
+  function renderReport(){
+    const summary = `# ${state.situation.title||'Untitled Deliberation'}\n\n## Situation\n${state.situation.description||''}\n\n## Provisional Judgement\n${state.judgement.j1||''}`;
+    return `<section class="report card" id="reportWrap"><h3>Final Structured Report</h3>${renderCompare()}
+      <pre style="white-space:pre-wrap">${summary}</pre>
+      <div class="nav"><button id="copyBtn" class="secondary">Copy summary</button><button id="printBtn" class="secondary">Print / save as PDF</button><button id="downloadBtn" class="secondary">Download .md</button></div>
+    </section>`;
+  }
+
+  function bind(){
+    stageContainer.querySelectorAll('input,textarea,select').forEach(el=>el.addEventListener('input',handleInput));
+    stageContainer.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{ const {name,val}=c.dataset; if(name==='stype')state.situation.type=val; if(name==='urgency')state.situation.urgency=val; if(name==='emotion')state.situation.emotion=val; if(name==='stakes')state.situation.stakes=val; if(name==='identity')state.identity.tag=val; render(); }));
+    stageContainer.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.add; state[k].push({}); render();}));
+    stageContainer.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>{const [k,i]=b.dataset.remove.split(':'); state[k].splice(+i,1); render();}));
+    stageContainer.querySelectorAll('[data-virtue]').forEach(v=>v.addEventListener('change',()=>{const n=v.dataset.virtue; const sel=state.virtues.selected; v.checked?sel.push(n):state.virtues.selected=sel.filter(x=>x!==n); render();}));
+    if($('#copyBtn')) $('#copyBtn').onclick=()=>navigator.clipboard.writeText(document.querySelector('#reportWrap pre').innerText).catch(()=>alert('Clipboard unavailable.'));
+    if($('#printBtn')) $('#printBtn').onclick=()=>window.print();
+    if($('#downloadBtn')) $('#downloadBtn').onclick=()=>{const blob=new Blob([document.querySelector('#reportWrap pre').innerText],{type:'text/markdown'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='practical-wisdom-report.md';a.click();URL.revokeObjectURL(a.href)};
+  }
+
+  function handleInput(e){
+    const t=e.target;
+    if(t.id==='title') state.situation.title=t.value;
+    if(t.id==='description') state.situation.description=t.value;
+    if(t.id==='iWant') state.identity.iWant=t.value;
+    if(t.id==='iAvoid') state.identity.iAvoid=t.value;
+    if(t.id==='tensions') state.virtues.tensions=t.value;
+    if(t.dataset.vnote) state.virtues.notes[t.dataset.vnote]=t.value;
+    if(t.dataset.repeat){ const {repeat,idx,field}=t.dataset; state[repeat][+idx][field]=t.value; }
+    if(t.dataset.cal){ const [ai,v,k]=t.dataset.cal.split('|'); state.calibration[ai]=state.calibration[ai]||{}; state.calibration[ai][v]=state.calibration[ai][v]||{}; state.calibration[ai][v][k]=+t.value; t.nextElementSibling.textContent=t.value; }
+    if(t.dataset.civic){const [ai,k]=t.dataset.civic.split('|'); state.civic[ai]=state.civic[ai]||{}; state.civic[ai][k]=+t.value;}
+    if(t.dataset.civicnote){state.civic[t.dataset.civicnote]=state.civic[t.dataset.civicnote]||{}; state.civic[t.dataset.civicnote].notes=t.value;}
+    if(t.id && t.id.startsWith('m_')) state.missing[t.id.slice(2)] = t.value;
+    if(t.id && t.id.startsWith('j')) state.judgement[t.id]=t.value;
+    if(t.id && t.id.startsWith('r_')) state.reflection[t.id.slice(2)] = t.value;
+    save();
+  }
+
+  $('#nextBtn').onclick = () => { if(state.stage===0 && !state.situation.title){ alert('Please add a title to continue.'); return; } state.stage=Math.min(stages.length-1,state.stage+1); render(); };
+  $('#prevBtn').onclick = () => { state.stage=Math.max(0,state.stage-1); render(); };
+  $('#resetBtn').onclick = () => { if(confirm('Reset this deliberation and clear local data?')){ localStorage.removeItem(STORAGE_KEY); location.reload(); } };
+  render();
+})();
+</script>
+</body>
+</html>
